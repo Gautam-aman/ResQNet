@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import {
   api,
@@ -36,6 +37,12 @@ interface IncidentState {
   ) => Promise<void>;
 }
 
+/**
+ * Incremented whenever a new request supersedes an older one.
+ * Only the latest request may update the store.
+ */
+let requestVersion = 0;
+
 export const useIncidentStore = create<IncidentState>((set, get) => ({
   items: [],
   overview: null,
@@ -49,55 +56,93 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
   error: null,
 
   setStatusFilter: (status) => {
+    if (get().filters.status === status) return;
+
+    requestVersion += 1;
+
     set({
       filters: { ...get().filters, status },
       items: [],
       page: 0,
       totalPages: 0,
       totalElements: 0,
+      loading: false,
+      loadingMore: false,
+      unreachable: false,
+      error: null,
     });
+
+    void get().refresh();
   },
 
   setQuery: (query) => {
+    if (get().filters.query === query) return;
+
+    requestVersion += 1;
+
     set({
       filters: { ...get().filters, query },
       items: [],
       page: 0,
       totalPages: 0,
       totalElements: 0,
+      loading: false,
+      loadingMore: false,
+      unreachable: false,
+      error: null,
     });
+
+    void get().refresh();
   },
 
   setSeverityFilter: (severity) => {
+    if (get().filters.severity === severity) return;
+
+    requestVersion += 1;
+
     set({
       filters: { ...get().filters, severity },
       items: [],
       page: 0,
       totalPages: 0,
       totalElements: 0,
+      loading: false,
+      loadingMore: false,
+      unreachable: false,
+      error: null,
     });
+
+    void get().refresh();
   },
 
   async refresh() {
-    const { filters } = get();
-    const previousPage = get().page;
+    const version = ++requestVersion;
+    const { filters, page: previousPage, items } = get();
 
-    if (get().items.length === 0) {
-      set({ loading: true });
-    }
-    set({ error: null });
+    set({
+      loading: items.length === 0,
+      loadingMore: false,
+      error: null,
+      unreachable: false,
+    });
 
     const fetchPage = (page: number) =>
-      filters.query
-        ? api.search(filters.query, page)
+      filters.query.trim()
+        ? api.search(filters.query.trim(), page)
         : api.incidents(filters.status ?? undefined, page);
 
     try {
       const firstPage = await fetchPage(0);
-      const lastPage = Math.min(
-        previousPage,
-        Math.max(0, firstPage.totalPages - 1),
-      );
+
+      // When severity is selected, inspect every server page so that
+      // matching incidents on later pages are not hidden.
+      const lastPage =
+        filters.severity !== null
+          ? Math.max(0, firstPage.totalPages - 1)
+          : Math.min(
+              previousPage,
+              Math.max(0, firstPage.totalPages - 1),
+            );
 
       const remainingPages = await Promise.all(
         Array.from({ length: lastPage }, (_, index) =>
@@ -105,10 +150,11 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
         ),
       );
 
-      const pages = [firstPage, ...remainingPages];
+      if (version !== requestVersion) return;
+
       const uniqueItems = new Map<string, IncidentSummary>();
 
-      for (const result of pages) {
+      for (const result of [firstPage, ...remainingPages]) {
         for (const incident of result.content) {
           uniqueItems.set(incident.reference, incident);
         }
@@ -122,6 +168,8 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
 
       const overview = await api.overview();
 
+      if (version !== requestVersion) return;
+
       set({
         items,
         overview,
@@ -131,8 +179,11 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
         loading: false,
         loadingMore: false,
         unreachable: false,
+        error: null,
       });
     } catch (cause) {
+      if (version !== requestVersion) return;
+
       if (cause instanceof ApiError && cause.status === 0) {
         set({
           unreachable: true,
@@ -155,9 +206,10 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
       set({
         loading: false,
         loadingMore: false,
-        error: cause instanceof Error
-          ? cause.message
-          : 'Could not load incidents',
+        error:
+          cause instanceof Error
+            ? cause.message
+            : 'Could not load incidents',
       });
     }
   },
@@ -173,19 +225,25 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
       return;
     }
 
+    const version = requestVersion;
     const nextPage = state.page + 1;
     const { filters } = state;
 
     set({ loadingMore: true, error: null });
 
     try {
-      const result = filters.query
-        ? await api.search(filters.query, nextPage)
+      const result = filters.query.trim()
+        ? await api.search(filters.query.trim(), nextPage)
         : await api.incidents(filters.status ?? undefined, nextPage);
+
+      if (version !== requestVersion) return;
 
       const current = get();
       const uniqueItems = new Map(
-        current.items.map((incident) => [incident.reference, incident]),
+        current.items.map((incident) => [
+          incident.reference,
+          incident,
+        ]),
       );
 
       for (const incident of result.content) {
@@ -205,11 +263,14 @@ export const useIncidentStore = create<IncidentState>((set, get) => ({
         loadingMore: false,
       });
     } catch (cause) {
+      if (version !== requestVersion) return;
+
       set({
         loadingMore: false,
-        error: cause instanceof Error
-          ? cause.message
-          : 'Could not load more incidents',
+        error:
+          cause instanceof Error
+            ? cause.message
+            : 'Could not load more incidents',
       });
     }
   },
