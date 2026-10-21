@@ -43,6 +43,11 @@ export function CommandPage() {
   const setStatusFilter = useIncidentStore((state) => state.setStatusFilter);
   const statusFilter = useIncidentStore((state) => state.filters.status);
   const setQuery = useIncidentStore((state) => state.setQuery);
+  const loadingMore = useIncidentStore((state) => state.loadingMore);
+const totalElements = useIncidentStore((state) => state.totalElements);
+const page = useIncidentStore((state) => state.page);
+const totalPages = useIncidentStore((state) => state.totalPages);
+const loadMore = useIncidentStore((state) => state.loadMore);
 
   const { runs, activeRun, events, loadRuns, selectRun } = useSimulationStore();
 
@@ -209,6 +214,10 @@ export function CommandPage() {
               unreachable={unreachable}
               activeStatus={statusFilter}
               onSelect={setSelected}
+              loadingMore={loadingMore}
+totalElements={totalElements}
+hasMore={page + 1 < totalPages}
+onLoadMore={loadMore}
               onFilterChange={(patch) => {
                 if (patch.status !== undefined) setStatusFilter(patch.status);
                 if (patch.query !== undefined) setQuery(patch.query);

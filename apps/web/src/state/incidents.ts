@@ -18,13 +18,17 @@ interface IncidentState {
   overview: Overview | null;
   filters: IncidentFilters;
   loading: boolean;
-  /** Set when the gateway could not be reached. Distinct from an empty list. */
+  loadingMore: boolean;
+  page: number;
+  totalPages: number;
+  totalElements: number;
   unreachable: boolean;
   error: string | null;
   setStatusFilter: (status: IncidentStatus | null) => void;
   setQuery: (query: string) => void;
   setSeverityFilter: (severity: number | null) => void;
   refresh: () => Promise<void>;
+  loadMore: () => Promise<void>;
   updateStatus: (
     reference: string,
     status: IncidentStatus,
@@ -32,63 +36,180 @@ interface IncidentState {
   ) => Promise<void>;
 }
 
-/**
- * Incident list state.
- *
- * `unreachable` exists because "no incidents" and "the gateway is down" are
- * completely different situations, and a responder acting on the first when it
- * is really the second is the worst failure this dashboard could have. They are
- * never conflated in this store.
- */
 export const useIncidentStore = create<IncidentState>((set, get) => ({
   items: [],
   overview: null,
   filters: { status: null, query: '', severity: null },
   loading: false,
+  loadingMore: false,
+  page: 0,
+  totalPages: 0,
+  totalElements: 0,
   unreachable: false,
   error: null,
 
-  setStatusFilter: (status) => set({ filters: { ...get().filters, status } }),
-  setQuery: (query) => set({ filters: { ...get().filters, query } }),
-  setSeverityFilter: (severity) => set({ filters: { ...get().filters, severity } }),
+  setStatusFilter: (status) => {
+    set({
+      filters: { ...get().filters, status },
+      items: [],
+      page: 0,
+      totalPages: 0,
+      totalElements: 0,
+    });
+  },
 
-  /**
-   * True only while the first load is outstanding.
-   *
-   * <p>Not set for background refreshes. The command centre polls every 15
-   * seconds, and marking every poll as loading made the header alternate
-   * Live, Connecting, Live, Connecting. An operator learns to ignore the one
-   * indicator that tells them whether the dashboard is telling the truth, and
-   * then misses a real outage. Refreshing data is not the same as losing the
-   * connection; only a failed request is.
-   */
+  setQuery: (query) => {
+    set({
+      filters: { ...get().filters, query },
+      items: [],
+      page: 0,
+      totalPages: 0,
+      totalElements: 0,
+    });
+  },
+
+  setSeverityFilter: (severity) => {
+    set({
+      filters: { ...get().filters, severity },
+      items: [],
+      page: 0,
+      totalPages: 0,
+      totalElements: 0,
+    });
+  },
+
   async refresh() {
     const { filters } = get();
+    const previousPage = get().page;
+
     if (get().items.length === 0) {
       set({ loading: true });
     }
     set({ error: null });
+
+    const fetchPage = (page: number) =>
+      filters.query
+        ? api.search(filters.query, page)
+        : api.incidents(filters.status ?? undefined, page);
+
     try {
-      const page = filters.query
-        ? await api.search(filters.query)
-        : await api.incidents(filters.status ?? undefined);
-      const items = filters.severity === null
-        ? page.content
-        : page.content.filter((item) => item.severity === filters.severity);
+      const firstPage = await fetchPage(0);
+      const lastPage = Math.min(
+        previousPage,
+        Math.max(0, firstPage.totalPages - 1),
+      );
+
+      const remainingPages = await Promise.all(
+        Array.from({ length: lastPage }, (_, index) =>
+          fetchPage(index + 1),
+        ),
+      );
+
+      const pages = [firstPage, ...remainingPages];
+      const uniqueItems = new Map<string, IncidentSummary>();
+
+      for (const result of pages) {
+        for (const incident of result.content) {
+          uniqueItems.set(incident.reference, incident);
+        }
+      }
+
+      const items = [...uniqueItems.values()].filter(
+        (incident) =>
+          filters.severity === null ||
+          incident.severity === filters.severity,
+      );
+
       const overview = await api.overview();
-      set({ items, overview, loading: false, unreachable: false });
+
+      set({
+        items,
+        overview,
+        page: lastPage,
+        totalPages: firstPage.totalPages,
+        totalElements: firstPage.totalElements,
+        loading: false,
+        loadingMore: false,
+        unreachable: false,
+      });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 0) {
-        set({ unreachable: true, loading: false, error: cause.message, items: [] });
+        set({
+          unreachable: true,
+          loading: false,
+          loadingMore: false,
+          error: cause.message,
+        });
         return;
       }
+
       if (cause instanceof ApiError && cause.isAuthFailure) {
-        set({ loading: false, error: 'Session expired. Sign in again.' });
+        set({
+          loading: false,
+          loadingMore: false,
+          error: 'Session expired. Sign in again.',
+        });
         return;
       }
+
       set({
         loading: false,
-        error: cause instanceof Error ? cause.message : 'Could not load incidents',
+        loadingMore: false,
+        error: cause instanceof Error
+          ? cause.message
+          : 'Could not load incidents',
+      });
+    }
+  },
+
+  async loadMore() {
+    const state = get();
+
+    if (
+      state.loading ||
+      state.loadingMore ||
+      state.page + 1 >= state.totalPages
+    ) {
+      return;
+    }
+
+    const nextPage = state.page + 1;
+    const { filters } = state;
+
+    set({ loadingMore: true, error: null });
+
+    try {
+      const result = filters.query
+        ? await api.search(filters.query, nextPage)
+        : await api.incidents(filters.status ?? undefined, nextPage);
+
+      const current = get();
+      const uniqueItems = new Map(
+        current.items.map((incident) => [incident.reference, incident]),
+      );
+
+      for (const incident of result.content) {
+        if (
+          filters.severity === null ||
+          incident.severity === filters.severity
+        ) {
+          uniqueItems.set(incident.reference, incident);
+        }
+      }
+
+      set({
+        items: [...uniqueItems.values()],
+        page: nextPage,
+        totalPages: result.totalPages,
+        totalElements: result.totalElements,
+        loadingMore: false,
+      });
+    } catch (cause) {
+      set({
+        loadingMore: false,
+        error: cause instanceof Error
+          ? cause.message
+          : 'Could not load more incidents',
       });
     }
   },

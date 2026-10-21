@@ -15,11 +15,17 @@ interface IncidentQueueProps {
   incidents: IncidentSummary[];
   selected: string | null;
   loading: boolean;
+  loadingMore: boolean;
   unreachable: boolean;
-  /** The status filter currently applied, so the chip can show itself selected. */
+  totalElements: number;
+  hasMore: boolean;
   activeStatus: IncidentStatus | null;
   onSelect: (reference: string) => void;
-  onFilterChange: (patch: { status?: IncidentStatus | null; query?: string }) => void;
+  onLoadMore: () => void;
+  onFilterChange: (patch: {
+    status?: IncidentStatus | null;
+    query?: string;
+  }) => void;
 }
 
 const STATUS_FILTERS: { label: string; value: IncidentStatus | null }[] = [
@@ -45,9 +51,13 @@ export function IncidentQueue({
   incidents,
   selected,
   loading,
+  loadingMore,
   unreachable,
+  totalElements,
+  hasMore,
   activeStatus,
   onSelect,
+  onLoadMore,
   onFilterChange,
 }: IncidentQueueProps) {
   const reduced = useReducedMotion();
@@ -161,6 +171,25 @@ export function IncidentQueue({
             </AnimatePresence>
           </ul>
         )}
+        {!unreachable && incidents.length > 0 && (
+  <div className="flex flex-col items-center gap-3 py-4">
+    <p className="text-xs text-muted-foreground">
+      Showing {incidents.length} loaded incidents
+      {totalElements > 0 && ` · ${totalElements} total`}
+    </p>
+
+    {hasMore && (
+      <button
+        type="button"
+        onClick={onLoadMore}
+        disabled={loadingMore || loading}
+        className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {loadingMore ? 'Loading…' : 'Load more incidents'}
+      </button>
+    )}
+  </div>
+)}
       </div>
     </section>
   );
