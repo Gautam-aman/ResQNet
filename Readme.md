@@ -41,6 +41,30 @@ Real-device testing is especially valuable: start with the
 Use dummy messages and report the build, device, steps, actual results and any
 blocked checks. Simulation is not evidence of real multi-hop radio performance.
 
+## Try the simulator in 60 seconds
+
+Want to verify the mesh routing without setting up Android phones or a gateway?
+You only need **JDK 21** and **Maven 3.9+**. In a fresh clone, open a terminal
+at the repository root, check the versions, then run:
+
+```sh
+java -version
+mvn -version
+mvn -pl packages/mesh-simulator -am package
+java -jar packages/mesh-simulator/target/mesh-simulator-0.2.0-beta-runnable.jar --topology ring --nodes 10 --messages 15 --seed 50 --rounds 30 --out report.json
+```
+
+The build should end with `BUILD SUCCESS`. The simulator prints a
+`Nodes:` summary and `Wrote .../report.json` on success. The JSON report is
+written to `report.json` in the repository root; it can be explored in the
+[Mesh Replay Lab](docs/mesh-replay-lab/README.md). The delivery rate counts
+**directed messages only**, because broadcasts cannot be acknowledged.
+
+This uses the real routing engine with **simulated radio**, **not physical
+handset or radio testing**. The first Maven run may need to download dependencies,
+so the heading is not a guaranteed wall-clock time. For the full seven-stage
+demonstration and failure scenarios, follow the [demo guide](docs/demo.md).
+
 ---
 
 ## 1. Introduction
