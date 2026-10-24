@@ -73,32 +73,33 @@ export function CommandPage() {
       setAccounts([]);
       return;
     }
+
     let cancelled = false;
+
     void api.accounts()
-      .then((list) => { if (!cancelled) setAccounts(list); })
-      .catch(() => { if (!cancelled) setAccounts([]); });
-    return () => { cancelled = true; };
+      .then((list) => {
+        if (!cancelled) setAccounts(list);
+      })
+      .catch(() => {
+        if (!cancelled) setAccounts([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [identity]);
 
   /**
    * Live updates, with polling kept underneath.
    *
-   * <p>Three things matter here and each is deliberate:
-   *
-   * <ul>
-   *   <li>The stream is an accelerator, not a dependency. Polling stays at its
-   *       existing interval and continues whether the socket is open, retrying
-   *       or permanently dead, so a responder is never looking at a screen that
-   *       stopped updating because a WebSocket closed.</li>
-   *   <li>Every connection <em>transition</em> triggers a refresh, including
-   *       reconnects. The stream carries no replay, so anything that happened
-   *       while it was down is only recoverable by asking again.</li>
-   *   <li>The token is read through a ref-like getter rather than captured, so
-   *       signing out closes the socket instead of leaving it authenticated.</li>
-   * </ul>
+   * <p>The stream is an accelerator, not a dependency. Polling continues
+   * whether the socket is open, retrying, or permanently disconnected.
+   * Every connection transition triggers a refresh because the stream carries
+   * no replay, so missed events are recovered by asking again.
    */
   useEffect(() => {
     if (!identity) return undefined;
+
     const stream = new EventStream({
       token: () => authStorage.token(),
       onEvent: (event) => {
@@ -108,24 +109,26 @@ export function CommandPage() {
           void loadRuns();
         }
       },
-      onConnectionChange: () => {
-        setLive(true);
-        // Deliberately unconditional. This fires on close as well as open, so
-        // a dropped socket reconciles the view rather than leaving whatever it
-        // missed on screen until the next poll.
+      onConnectionChange: (connected) => {
+        setLive(connected);
+        // Reconcile the view on open and close so missed events are recovered.
         void refresh();
       },
     });
+
     stream.start();
+
     return () => stream.stop();
   }, [identity, refresh, loadRuns]);
 
   useEffect(() => {
     if (!identity) return undefined;
+
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       void refresh();
     }, POLL_INTERVAL_MS);
+
     return () => window.clearInterval(timer);
   }, [identity, refresh]);
 
@@ -134,8 +137,10 @@ export function CommandPage() {
       setDetail(null);
       return;
     }
+
     let cancelled = false;
     setDetailLoading(true);
+
     api
       .incident(selected)
       .then((result) => {
@@ -147,6 +152,7 @@ export function CommandPage() {
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -180,14 +186,9 @@ export function CommandPage() {
       {/*
         One live region for everything that changes without a page load.
 
-        Previously the command centre announced nothing at all: incidents
-        arriving on the 15-second poll, the gateway becoming unreachable, and a
-        status change succeeding were all silent. A screen-reader user watching
-        this console would have no idea the data underneath them had changed.
-
         `aria-live="polite"` rather than "assertive" because a new incident is
-        not an emergency *to the user*; it is information they will read when
-        they look. Assertive would interrupt them mid-sentence on every poll.
+        information the user can read when they look. Assertive would interrupt
+        them mid-sentence on every poll.
       */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {unreachable
@@ -195,8 +196,8 @@ export function CommandPage() {
           : stale
             ? 'The last refresh failed. The incident list below may be out of date.'
             : incidents.length === 1
-            ? '1 incident in the queue.'
-            : `${incidents.length} incidents in the queue.`}
+              ? '1 incident in the queue.'
+              : `${incidents.length} incidents in the queue.`}
         {overview ? ` ${overview.open} open, ${overview.critical} critical.` : ''}
       </div>
 
@@ -210,6 +211,7 @@ export function CommandPage() {
             list is from the previous refresh and may be out of date.
           </div>
         ) : null}
+
         <OverviewTiles
           overview={overview}
           nodeCount={activeRun?.nodeCount ?? null}
@@ -250,6 +252,7 @@ export function CommandPage() {
                       + 'somebody else instead.',
                     );
                   }
+
                   await api.assign(reference, accountId);
                   await refresh();
                 }}
@@ -258,12 +261,14 @@ export function CommandPage() {
 
             <div className="grid gap-5 lg:grid-cols-2">
               <MapPanel incidents={incidents} selected={selected} onSelect={setSelected} />
+
               <div className="flex flex-col gap-5">
                 {runs.length > 1 ? (
                   <div className="surface p-4">
                     <label className="eyebrow" htmlFor="run-select">
                       Simulation run
                     </label>
+
                     <select
                       id="run-select"
                       value={activeRun?.runId ?? ''}
@@ -278,6 +283,7 @@ export function CommandPage() {
                     </select>
                   </div>
                 ) : null}
+
                 <TopologyPanel run={activeRun} events={events} />
               </div>
             </div>

@@ -140,10 +140,17 @@ public class EventStreamIntegrationTest {
     }
 
     @Test
-    @DisplayName("accepts a responder session")
+    @DisplayName("accepts a responder session with the expected subprotocol")
     void acceptsResponder() throws Exception {
-        try (Subscription subscription = open(tokenFor(ResponderRole.RESPONDER, "ws-ok"))) {
+        try (Subscription subscription = open(
+                tokenFor(ResponderRole.RESPONDER, "ws-ok"))) {
+
             assertThat(subscription).isNotNull();
+
+            assertThat(subscription.session.getAcceptedProtocol())
+                    .as("the server must negotiate the ResQNet WebSocket protocol")
+                    .isEqualTo(WebSocketAuthInterceptor.PROTOCOL);
+
             assertThat(subscription.awaitFrame("connected"))
                     .as("an accepted socket is greeted immediately")
                     .isNotNull();
@@ -153,7 +160,9 @@ public class EventStreamIntegrationTest {
     @Test
     @DisplayName("an incident created by a device reaches a connected dashboard")
     void deviceCreatedIncidentIsBroadcast() throws Exception {
-        try (Subscription subscription = open(tokenFor(ResponderRole.RESPONDER, "ws-inc"))) {
+        try (Subscription subscription = open(
+                tokenFor(ResponderRole.RESPONDER, "ws-inc"))) {
+
             assertThat(subscription.awaitFrame("connected")).isNotNull();
 
             gateway.ingest(new Dtos.GatewaySyncRequest("android", "rqn1_ws_1",
@@ -163,9 +172,11 @@ public class EventStreamIntegrationTest {
                     "req-ws");
 
             String created = subscription.awaitFrame("incident.created");
+
             assertThat(created)
                     .as("a dashboard must learn about a new incident without polling")
                     .isNotNull();
+
             assertThat(created).contains("\"advisory\":true");
         }
     }
@@ -178,12 +189,17 @@ public class EventStreamIntegrationTest {
                         "EMERGENCY_REPORT", "fire", 0.8, "rqn1_origin", "command",
                         1_760_000_000_000L, 1_760_000_900_000L, 1, "ws test", null))),
                 "req-ws2");
+
         String reference = incidentRepository.findAll().get(0).getReference();
 
-        try (Subscription subscription = open(tokenFor(ResponderRole.ADMIN, "ws-res"))) {
+        try (Subscription subscription = open(
+                tokenFor(ResponderRole.ADMIN, "ws-res"))) {
+
             assertThat(subscription.awaitFrame("connected")).isNotNull();
+
             incidents.updateStatus(reference,
-                    new Dtos.UpdateStatusRequest(IncidentStatus.RESOLVED, "handled", null),
+                    new Dtos.UpdateStatusRequest(
+                            IncidentStatus.RESOLVED, "handled", null),
                     ResQNetPrincipal.responder("op", ResponderRole.ADMIN, 1L),
                     "req-resolve");
 
@@ -197,24 +213,30 @@ public class EventStreamIntegrationTest {
     @Test
     @DisplayName("a gateway sync produces one summary event, not one per record")
     void gatewaySyncIsSummarisedOnce() throws Exception {
-        try (Subscription subscription = open(tokenFor(ResponderRole.RESPONDER, "ws-sync"))) {
+        try (Subscription subscription = open(
+                tokenFor(ResponderRole.RESPONDER, "ws-sync"))) {
+
             assertThat(subscription.awaitFrame("connected")).isNotNull();
 
             gateway.ingest(new Dtos.GatewaySyncRequest("android", "rqn1_ws_3",
                     List.of(
                             new Dtos.GatewayMessageReport("m-ws3", "ACKNOWLEDGED", "SOS",
-                                    "EMERGENCY_REPORT", "medical", 0.8, "rqn1_origin", "command",
-                                    1_760_000_000_000L, 1_760_000_900_000L, 1, "a", null),
+                                    "EMERGENCY_REPORT", "medical", 0.8, "rqn1_origin",
+                                    "command", 1_760_000_000_000L, 1_760_000_900_000L,
+                                    1, "a", null),
                             new Dtos.GatewayMessageReport("m-ws4", "ACKNOWLEDGED", "SOS",
-                                    "EMERGENCY_REPORT", "fire", 0.8, "rqn1_origin2", "command",
-                                    1_760_000_000_000L, 1_760_000_900_000L, 1, "b", null))),
+                                    "EMERGENCY_REPORT", "fire", 0.8, "rqn1_origin2",
+                                    "command", 1_760_000_000_000L, 1_760_000_900_000L,
+                                    1, "b", null))),
                     "req-ws3");
 
             String sync = subscription.awaitFrame("gateway.sync");
+
             assertThat(sync)
                     .as("a handset reconnecting after a gap may report dozens of records;"
                             + " fifty identical frames tell a dashboard nothing one does not")
                     .isNotNull();
+
             assertThat(sync).contains("2 record(s)");
         }
     }
@@ -222,20 +244,19 @@ public class EventStreamIntegrationTest {
     @Test
     @DisplayName("a rolled back transaction publishes nothing")
     void rollbackPublishesNothing() throws Exception {
-        try (Subscription subscription = open(tokenFor(ResponderRole.RESPONDER, "ws-rb"))) {
+        try (Subscription subscription = open(
+                tokenFor(ResponderRole.RESPONDER, "ws-rb"))) {
+
             assertThat(subscription.awaitFrame("connected")).isNotNull();
 
-            // A transaction that stages events and then rolls back. The earlier
-            // version relied on an invalid status transition to force a failure,
-            // which did not fail at all: NEW to RESOLVED is a legal move, so it
-            // committed and published, and the test asserted a rollback while
-            // causing a success.
+            // A transaction that stages events and then rolls back.
             assertThatThrownBy(() -> failingTransaction.executeWithoutResult(status -> {
                 incidents.createManually(
-                        new Dtos.CreateIncidentRequest("rolled back", Category.FLOODING, 3,
-                                null, null),
+                        new Dtos.CreateIncidentRequest(
+                                "rolled back", Category.FLOODING, 3, null, null),
                         ResQNetPrincipal.responder("op", ResponderRole.ADMIN, 1L),
                         "req-rollback");
+
                 throw new IllegalStateException("simulated failure after staging");
             })).isInstanceOf(IllegalStateException.class);
 
@@ -243,6 +264,7 @@ public class EventStreamIntegrationTest {
                     .as("an event about a change that never committed is worse than no event"
                             + " at all: the operator opens the incident and finds nothing")
                     .isNull();
+
             assertThat(incidentRepository.findAll())
                     .as("and nothing was written either")
                     .noneMatch(i -> "rolled back".equals(i.getTitle()));
@@ -260,7 +282,11 @@ public class EventStreamIntegrationTest {
 
     private String tokenFor(ResponderRole role, String username) {
         ResponderAccount account = accounts.save(new ResponderAccount(
-                username + "-" + System.nanoTime(), username, encoder.encode("pw"), role));
+                username + "-" + System.nanoTime(),
+                username,
+                encoder.encode("pw"),
+                role));
+
         return jwt.issue(account.getUsername(), role, account.getId());
     }
 
@@ -282,18 +308,24 @@ public class EventStreamIntegrationTest {
      */
     private Subscription open(String token) throws Exception {
         String url = "ws://localhost:" + port + "/ws/incidents";
+
         WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
+
         headers.setSecWebSocketProtocol(token == null
                 ? List.of(WebSocketAuthInterceptor.PROTOCOL)
-                : List.of(WebSocketAuthInterceptor.PROTOCOL,
+                : List.of(
+                        WebSocketAuthInterceptor.PROTOCOL,
                         WebSocketAuthInterceptor.CREDENTIAL_PREFIX + token));
+
         WebSocketSession session = new StandardWebSocketClient()
                 .execute(new RecordingHandler(received), headers, URI.create(url))
                 .get();
+
         if (!session.isOpen()) {
             session.close(CloseStatus.NOT_ACCEPTABLE);
             return null;
         }
+
         return new Subscription(session);
     }
 
@@ -320,14 +352,17 @@ public class EventStreamIntegrationTest {
         String awaitFrame(String type, long millis) throws InterruptedException {
             String needle = "\"type\":\"" + type + "\"";
             long deadline = System.currentTimeMillis() + millis;
+
             while (System.currentTimeMillis() < deadline) {
                 for (String frame : received) {
                     if (frame.contains(needle)) {
                         return frame;
                     }
                 }
+
                 Thread.sleep(40);
             }
+
             return null;
         }
     }

@@ -65,16 +65,35 @@ describe('EventStream', () => {
 
   it('reports connected on open', () => {
     const seen: boolean[] = [];
+
     stream = new EventStream({
       token: () => 't',
       onEvent: () => {},
-      onConnectionChange: (c) => seen.push(c),
+      onConnectionChange: (connected) => seen.push(connected),
     });
+
     stream.start();
     sockets[0]!.onopen?.();
 
     expect(seen).toContain(true);
     expect(stream.state).toBe('open');
+  });
+
+  it('reports disconnected when the socket closes', () => {
+    const seen: boolean[] = [];
+
+    stream = new EventStream({
+      token: () => 't',
+      onEvent: () => {},
+      onConnectionChange: (connected) => seen.push(connected),
+    });
+
+    stream.start();
+    sockets[0]!.onopen?.();
+    sockets[0]!.onclose?.();
+
+    expect(seen[seen.length - 1]).toBe(false);
+    expect(stream.state).toBe('retrying');
   });
 
   it('retries with backoff after an unexpected close', () => {
@@ -99,16 +118,19 @@ describe('EventStream', () => {
 
   it('stops retrying once stopped', () => {
     const changes: boolean[] = [];
+
     stream = new EventStream({
       token: () => 't',
       onEvent: () => {},
-      onConnectionChange: (c) => changes.push(c),
+      onConnectionChange: (connected) => changes.push(connected),
     });
+
     stream.start();
     sockets[0]!.onopen?.();
     stream.stop();
 
     vi.advanceTimersByTime(60_000);
+
     expect(sockets).toHaveLength(1);
     expect(stream.state).toBe('idle');
     expect(changes[changes.length - 1]).toBe(false);
@@ -116,21 +138,42 @@ describe('EventStream', () => {
 
   it('delivers parsed events and ignores keepalives', () => {
     const events: StreamEvent[] = [];
-    stream = new EventStream({ token: () => 't', onEvent: (e) => events.push(e) });
+
+    stream = new EventStream({
+      token: () => 't',
+      onEvent: (event) => events.push(event),
+    });
+
     stream.start();
 
     sockets[0]!.onmessage?.({
-      data: JSON.stringify({ type: 'incident.created', reference: 'RQ-1', at: '', detail: '', incident: null }),
+      data: JSON.stringify({
+        type: 'incident.created',
+        reference: 'RQ-1',
+        at: '',
+        detail: '',
+        incident: null,
+      }),
     } as MessageEvent<string>);
-    sockets[0]!.onmessage?.({ data: '{"type":"pong"}' } as MessageEvent<string>);
-    sockets[0]!.onmessage?.({ data: '{"type":"connected"}' } as MessageEvent<string>);
-    sockets[0]!.onmessage?.({ data: 'not json' } as MessageEvent<string>);
 
-    expect(events.map((e) => e.type)).toEqual(['incident.created']);
+    sockets[0]!.onmessage?.({
+      data: '{"type":"pong"}',
+    } as MessageEvent<string>);
+
+    sockets[0]!.onmessage?.({
+      data: '{"type":"connected"}',
+    } as MessageEvent<string>);
+
+    sockets[0]!.onmessage?.({
+      data: 'not json',
+    } as MessageEvent<string>);
+
+    expect(events.map((event) => event.type)).toEqual(['incident.created']);
   });
 
   it('marks incident events as needing a list refresh', () => {
     const base = { reference: null, at: '', detail: '', incident: null };
+
     expect(shouldRefreshList({ ...base, type: 'incident.created' })).toBe(true);
     expect(shouldRefreshList({ ...base, type: 'incident.resolved' })).toBe(true);
     expect(shouldRefreshList({ ...base, type: 'gateway.sync' })).toBe(false);
