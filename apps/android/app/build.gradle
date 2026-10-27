@@ -122,13 +122,13 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.core:core:1.12.0'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
-    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
-    implementation 'androidx.work:work-runtime:2.9.0'
-    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
+    implementation 'androidx.work:work-runtime:2.12.0'
+    implementation 'com.google.android.material:material:1.14.0'
 
     // Peer discovery and the byte pipe. Nearby Connections handles the radio
     // link only; multi-hop routing above it is ResQNet's own responsibility and
@@ -140,11 +140,11 @@ dependencies {
     // Maven build uses the pure-Java artifact with the same API.
     implementation 'com.google.crypto.tink:tink-android:1.24.0'
 
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.assertj:assertj-core:3.27.3'
-    testImplementation 'org.robolectric:robolectric:4.13'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testImplementation 'org.robolectric:robolectric:4.17'
     testImplementation 'androidx.test:core:1.5.0'
 
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
@@ -158,5 +158,5 @@ dependencies {
     // system permission dialog. Everything else uses Espresso against our own
     // view hierarchy, because a UiAutomator selector is a string that rots
     // silently when someone renames a button.
-    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.2.0'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.4.0'
 }
