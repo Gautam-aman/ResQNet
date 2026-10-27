@@ -59,8 +59,8 @@
     <tink.version>1.24.0</tink.version>
 
     <maven.compiler.plugin.version>3.16.0</maven.compiler.plugin.version>
-    <maven.surefire.plugin.version>3.6.0</maven.surefire.plugin.version>
-    <maven.failsafe.plugin.version>3.6.0</maven.failsafe.plugin.version>
+    <maven.surefire.plugin.version>3.6.1</maven.surefire.plugin.version>
+    <maven.failsafe.plugin.version>3.6.1</maven.failsafe.plugin.version>
     <maven.shade.plugin.version>3.6.2</maven.shade.plugin.version>
     <!-- Integration tests need a live PostgreSQL; see the failsafe config. -->
     <skipITs>true</skipITs>
