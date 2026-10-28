@@ -48,6 +48,11 @@ export function CommandPage() {
   const statusFilter = useIncidentStore((state) => state.filters.status);
   const setQuery = useIncidentStore((state) => state.setQuery);
 
+  const loadingMore = useIncidentStore((state) => state.loadingMore);
+  const hasMore = useIncidentStore((state) => state.hasMore);
+  const totalElements = useIncidentStore((state) => state.totalElements);
+  const loadMore = useIncidentStore((state) => state.loadMore);
+
   const { runs, activeRun, events, loadRuns, selectRun } = useSimulationStore();
 
   const [live, setLive] = useState(false);
@@ -231,6 +236,10 @@ export function CommandPage() {
                 if (patch.status !== undefined) setStatusFilter(patch.status);
                 if (patch.query !== undefined) setQuery(patch.query);
               }}
+              loadingMore={loadingMore}
+              hasMore={hasMore}
+              totalElements={totalElements}
+              onLoadMore={loadMore}
             />
           </div>
 
