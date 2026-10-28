@@ -1,3 +1,4 @@
+
 package dev.resqnet.mesh.simulator;
 
 import dev.resqnet.mesh.routing.RetryPolicy;
@@ -42,26 +43,44 @@ public record SimulationConfig(
         if (topology == null) {
             throw new IllegalArgumentException("topology is required");
         }
+
         if (messageCount < 0 || rounds < 1 || stepMillis <= 0) {
-            throw new IllegalArgumentException("messageCount >= 0, rounds >= 1, stepMillis > 0");
+            throw new IllegalArgumentException(
+                    "messageCount >= 0, rounds >= 1, stepMillis > 0");
         }
-        if (broadcastRatio < 0 || broadcastRatio > 1) {
-            throw new IllegalArgumentException("broadcastRatio must be within [0,1]");
+
+        if (!Double.isFinite(broadcastRatio)
+                || broadcastRatio < 0 || broadcastRatio > 1) {
+            throw new IllegalArgumentException(
+                    "broadcastRatio must be within [0,1]");
         }
-        if (linkDropProbability < 0 || linkDropProbability > 1) {
-            throw new IllegalArgumentException("linkDropProbability must be within [0,1]");
+
+        if (!Double.isFinite(linkDropProbability)
+                || linkDropProbability < 0 || linkDropProbability > 1) {
+            throw new IllegalArgumentException(
+                    "linkDropProbability must be within [0,1]");
         }
+
+        if (messageLifetimeSeconds <= 0) {
+            throw new IllegalArgumentException(
+                    "messageLifetimeSeconds must be positive");
+        }
+
         if (hopLimit < 1 || hopLimit > 32) {
-            throw new IllegalArgumentException("hopLimit must be within [1,32]");
+            throw new IllegalArgumentException(
+                    "hopLimit must be within [1,32]");
         }
+
         if (churnEveryRounds < 0) {
-            throw new IllegalArgumentException("churnEveryRounds must not be negative");
+            throw new IllegalArgumentException(
+                    "churnEveryRounds must not be negative");
         }
     }
 
     /** A sensible default configuration for the given topology. */
     public static SimulationConfig defaults(Topology topology, long seed) {
-        return new SimulationConfig(topology, 24, 0.25, 1_760_000_000L, 250L, 60, seed,
+        return new SimulationConfig(
+                topology, 24, 0.25, 1_760_000_000L, 250L, 60, seed,
                 0.0, 12, 8, 900L, false);
     }
 
@@ -92,47 +111,55 @@ public record SimulationConfig(
 
     /** Copy with a different message count. */
     public SimulationConfig withMessageCount(int count) {
-        return new SimulationConfig(topology, count, broadcastRatio, startEpochSeconds,
-                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds, hopLimit,
-                messageLifetimeSeconds, startPartitioned);
+        return new SimulationConfig(
+                topology, count, broadcastRatio, startEpochSeconds,
+                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds,
+                hopLimit, messageLifetimeSeconds, startPartitioned);
     }
 
     /** Copy with a different drop probability. */
     public SimulationConfig withLinkDropProbability(double probability) {
-        return new SimulationConfig(topology, messageCount, broadcastRatio, startEpochSeconds,
-                stepMillis, rounds, seed, probability, churnEveryRounds, hopLimit,
-                messageLifetimeSeconds, startPartitioned);
+        return new SimulationConfig(
+                topology, messageCount, broadcastRatio, startEpochSeconds,
+                stepMillis, rounds, seed, probability, churnEveryRounds,
+                hopLimit, messageLifetimeSeconds, startPartitioned);
     }
 
     /** Copy with churn enabled or disabled. */
     public SimulationConfig withChurnEveryRounds(int interval) {
-        return new SimulationConfig(topology, messageCount, broadcastRatio, startEpochSeconds,
-                stepMillis, rounds, seed, linkDropProbability, interval, hopLimit,
-                messageLifetimeSeconds, startPartitioned);
+        return new SimulationConfig(
+                topology, messageCount, broadcastRatio, startEpochSeconds,
+                stepMillis, rounds, seed, linkDropProbability, interval,
+                hopLimit, messageLifetimeSeconds, startPartitioned);
     }
 
     /** Copy starting from a partitioned topology. */
     public SimulationConfig startingPartitioned() {
-        return new SimulationConfig(topology, messageCount, broadcastRatio, startEpochSeconds,
-                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds, hopLimit,
-                messageLifetimeSeconds, true);
+        return new SimulationConfig(
+                topology, messageCount, broadcastRatio, startEpochSeconds,
+                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds,
+                hopLimit, messageLifetimeSeconds, true);
     }
 
     /** Copy with a different hop budget. */
     public SimulationConfig withHopLimit(int hops) {
         if (hops < 1 || hops > 32) {
-            throw new IllegalArgumentException("hopLimit must be within [1,32]");
+            throw new IllegalArgumentException(
+                    "hopLimit must be within [1,32]");
         }
-        return new SimulationConfig(topology, messageCount, broadcastRatio, startEpochSeconds,
-                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds, hops,
-                messageLifetimeSeconds, startPartitioned);
+
+        return new SimulationConfig(
+                topology, messageCount, broadcastRatio, startEpochSeconds,
+                stepMillis, rounds, seed, linkDropProbability, churnEveryRounds,
+                hops, messageLifetimeSeconds, startPartitioned);
     }
 
     /** Copy with a different round count. */
     public SimulationConfig withRounds(int count) {
-        return new SimulationConfig(topology, messageCount, broadcastRatio, startEpochSeconds,
-                stepMillis, count, seed, linkDropProbability, churnEveryRounds, hopLimit,
-                messageLifetimeSeconds, startPartitioned);
+        return new SimulationConfig(
+                topology, messageCount, broadcastRatio, startEpochSeconds,
+                stepMillis, count, seed, linkDropProbability, churnEveryRounds,
+                hopLimit, messageLifetimeSeconds, startPartitioned);
     }
 
     public long endEpochSeconds() {
