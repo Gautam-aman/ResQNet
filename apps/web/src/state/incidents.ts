@@ -19,18 +19,19 @@ interface IncidentState {
   overview: Overview | null;
   filters: IncidentFilters;
   loading: boolean;
-  /** Set when the gateway could not be reached. Distinct from an empty list. */
+  loadingMore: boolean;
+  page: number;
+  totalElements: number;
+  hasMore: boolean;
   unreachable: boolean;
-  /**
-   * Set when the last refresh failed but the gateway answered (a 5xx, say).
-   * `items` still holds the previous queue, which may no longer be true.
-   */
   stale: boolean;
   error: string | null;
+
   setStatusFilter: (status: IncidentStatus | null) => void;
   setQuery: (query: string) => void;
   setSeverityFilter: (severity: number | null) => void;
   refresh: () => Promise<void>;
+  loadMore: () => Promise<void>;
   updateStatus: (
     reference: string,
     status: IncidentStatus,
@@ -38,87 +39,234 @@ interface IncidentState {
   ) => Promise<void>;
 }
 
-/**
- * Sequence number of the latest refresh. A refresh whose number is no longer
- * the latest has been overtaken by a newer one and must not apply its result.
- */
 let latestRefresh = 0;
 
-/**
- * Incident list state.
- *
- * `unreachable` exists because "no incidents" and "the gateway is down" are
- * completely different situations, and a responder acting on the first when it
- * is really the second is the worst failure this dashboard could have. They are
- * never conflated in this store.
- */
 export const useIncidentStore = create<IncidentState>((set, get) => ({
   items: [],
   overview: null,
   filters: { status: null, query: '', severity: null },
   loading: false,
+  loadingMore: false,
+  page: 0,
+  totalElements: 0,
+  hasMore: true,
   unreachable: false,
   stale: false,
   error: null,
 
-  setStatusFilter: (status) => set({ filters: { ...get().filters, status } }),
-  setQuery: (query) => set({ filters: { ...get().filters, query } }),
-  setSeverityFilter: (severity) => set({ filters: { ...get().filters, severity } }),
+  setStatusFilter: (status) => {
+    set({
+      filters: { ...get().filters, status },
+      page: 0,
+      totalElements: 0,
+      hasMore: true,
+    });
+  },
 
-  /**
-   * True only while the first load is outstanding.
-   *
-   * <p>Not set for background refreshes. The command centre polls every 15
-   * seconds, and marking every poll as loading made the header alternate
-   * Live, Connecting, Live, Connecting. An operator learns to ignore the one
-   * indicator that tells them whether the dashboard is telling the truth, and
-   * then misses a real outage. Refreshing data is not the same as losing the
-   * connection; only a failed request is.
-   */
+  setQuery: (query) => {
+    set({
+      filters: { ...get().filters, query },
+      page: 0,
+      totalElements: 0,
+      hasMore: true,
+    });
+  },
+
+  setSeverityFilter: (severity) => {
+    set({ filters: { ...get().filters, severity } });
+  },
+
   async refresh() {
-    const { filters } = get();
-    // Results only count for the refresh that is still the latest, and only
-    // for the session it started in: an older request finishing late must not
-    // overwrite a newer queue or sign out a session that started after it.
+    const filters = { ...get().filters };
+    const requestedPage = get().page;
     const id = ++latestRefresh;
     const token = useAuthStore.getState().token;
-    const current = () => id === latestRefresh && useAuthStore.getState().token === token;
+
+    const current = () =>
+      id === latestRefresh &&
+      useAuthStore.getState().token === token;
+
     if (get().items.length === 0) {
       set({ loading: true });
     }
+
     set({ error: null });
+
+    const fetchPage = (pageNumber: number) =>
+      filters.query
+        ? api.search(filters.query, pageNumber)
+        : api.incidents(filters.status ?? undefined, pageNumber);
+
     try {
-      const page = filters.query
-        ? await api.search(filters.query)
-        : await api.incidents(filters.status ?? undefined);
-      const items = filters.severity === null
-        ? page.content
-        : page.content.filter((item) => item.severity === filters.severity);
+      // Fetch the first page to determine the current result count.
+      const firstPage = await fetchPage(0);
+
+      const lastPage = Math.max(
+        0,
+        Math.min(requestedPage, firstPage.totalPages - 1),
+      );
+
+      // Reload every page already displayed so a background refresh
+      // doesn't reduce the queue to the first 25 incidents.
+      const remainingPages = await Promise.all(
+        Array.from(
+          { length: lastPage },
+          (_, index) => fetchPage(index + 1),
+        ),
+      );
+
       const overview = await api.overview();
+
       if (!current()) return;
-      set({ items, overview, loading: false, unreachable: false, stale: false });
+
+      const allItems = [
+        ...firstPage.content,
+        ...remainingPages.flatMap((result) => result.content),
+      ];
+
+      // Deduplicate incidents in case the queue changed between requests.
+      const uniqueItems = [
+        ...new Map(
+          allItems.map((item) => [item.reference, item]),
+        ).values(),
+      ];
+
+      const items = filters.severity === null
+        ? uniqueItems
+        : uniqueItems.filter(
+            (item) => item.severity === filters.severity,
+          );
+
+      set({
+        items,
+        overview,
+        page: lastPage,
+        totalElements: firstPage.totalElements,
+        hasMore: lastPage + 1 < firstPage.totalPages,
+        loading: false,
+        loadingMore: false,
+        unreachable: false,
+        stale: false,
+        error: null,
+      });
     } catch (cause) {
       if (!current()) return;
+
       if (cause instanceof ApiError && cause.status === 0) {
-        set({ unreachable: true, stale: false, loading: false, error: cause.message, items: [] });
-        return;
-      }
+  // Keep existing incidents visible during a gateway outage.
+  set({
+    unreachable: true,
+    stale: false,
+    loading: false,
+    loadingMore: false,
+    error: cause.message,
+  });
+  return;
+}
+
       if (cause instanceof ApiError && cause.isAuthFailure) {
-        // A console that still looks usable after the session ended invites
-        // acting on it. Sign out, which brings back the sign-in screen, and say
-        // why there.
-        set({ items: [], overview: null, loading: false, unreachable: false, stale: false, error: null });
+        set({
+          items: [],
+          overview: null,
+          page: 0,
+          totalElements: 0,
+          hasMore: true,
+          loading: false,
+          loadingMore: false,
+          unreachable: false,
+          stale: false,
+          error: null,
+        });
+
         useAuthStore.getState().signOut();
-        useAuthStore.setState({ error: 'Your session expired. Sign in again.' });
+        useAuthStore.setState({
+          error: 'Your session expired. Sign in again.',
+        });
         return;
       }
-      // The gateway answered but the refresh failed: keep the previous queue
-      // so the responder still sees it, but mark it stale.
+
+      // Keep the previous queue if the refresh fails.
       set({
         loading: false,
+        loadingMore: false,
         unreachable: false,
         stale: true,
-        error: cause instanceof Error ? cause.message : 'Could not load incidents',
+        error: cause instanceof Error
+          ? cause.message
+          : 'Could not load incidents',
+      });
+    }
+  },
+
+  async loadMore() {
+    const state = get();
+
+    if (
+      state.loadingMore ||
+      state.loading ||
+      !state.hasMore
+    ) {
+      return;
+    }
+
+    const filters = { ...state.filters };
+    const nextPage = state.page + 1;
+    const id = ++latestRefresh;
+    const token = useAuthStore.getState().token;
+
+    const current = () =>
+      id === latestRefresh &&
+      useAuthStore.getState().token === token;
+
+    set({ loadingMore: true, error: null });
+
+    try {
+      const result = filters.query
+        ? await api.search(filters.query, nextPage)
+        : await api.incidents(
+            filters.status ?? undefined,
+            nextPage,
+          );
+
+      if (!current()) return;
+
+      const existing = get().items;
+      const combined = [
+        ...existing,
+        ...result.content,
+      ];
+
+      const uniqueItems = [
+        ...new Map(
+          combined.map((item) => [item.reference, item]),
+        ).values(),
+      ];
+
+      const items = filters.severity === null
+        ? uniqueItems
+        : uniqueItems.filter(
+            (item) => item.severity === filters.severity,
+          );
+
+      set({
+        items,
+        page: nextPage,
+        totalElements: result.totalElements,
+        hasMore: nextPage + 1 < result.totalPages,
+        loadingMore: false,
+        unreachable: false,
+        stale: false,
+        error: null,
+      });
+    } catch (cause) {
+      if (!current()) return;
+
+      set({
+        loadingMore: false,
+        stale: true,
+        error: cause instanceof Error
+          ? cause.message
+          : 'Could not load more incidents',
       });
     }
   },

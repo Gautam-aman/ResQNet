@@ -16,9 +16,13 @@ interface IncidentQueueProps {
   selected: string | null;
   loading: boolean;
   unreachable: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  totalElements: number;
   /** The status filter currently applied, so the chip can show itself selected. */
   activeStatus: IncidentStatus | null;
   onSelect: (reference: string) => void;
+  onLoadMore: () => void;
   onFilterChange: (patch: { status?: IncidentStatus | null; query?: string }) => void;
 }
 
@@ -46,8 +50,12 @@ export function IncidentQueue({
   selected,
   loading,
   unreachable,
+  loadingMore,
+  hasMore,
+  totalElements,
   activeStatus,
   onSelect,
+  onLoadMore,
   onFilterChange,
 }: IncidentQueueProps) {
   const reduced = useReducedMotion();
@@ -118,8 +126,13 @@ export function IncidentQueue({
         </div>
       </div>
 
+      <div className="mb-2 flex items-center justify-between text-[11px] text-ink-tertiary" aria-live="polite">
+        <span>Loaded {incidents.length} incident{incidents.length === 1 ? '' : 's'}</span>
+        <span>{totalElements} total</span>
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {unreachable ? (
+        {unreachable && incidents.length === 0 ? (
           <EmptyState
             title="Gateway unreachable"
             body="Incidents could not be loaded. This is not an empty queue."
@@ -161,6 +174,19 @@ export function IncidentQueue({
             </AnimatePresence>
           </ul>
         )}
+
+        {hasMore && incidents.length > 0 && !unreachable ? (
+          <div className="flex justify-center py-3">
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={loadingMore || loading}
+              className="rounded-lg border border-base-600 px-4 py-2 text-xs font-medium text-ink-secondary transition-colors hover:border-base-500 hover:text-ink-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-network disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading more…' : 'Load more incidents'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
   );
