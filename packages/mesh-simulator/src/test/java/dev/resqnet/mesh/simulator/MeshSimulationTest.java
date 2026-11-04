@@ -16,7 +16,8 @@ import dev.resqnet.mesh.simulator.json.Json;
 /**
  * End-to-end simulation behaviour.
  *
- * <p>These tests run the real routing engine over a synthetic radio. A failure
+ * <p>
+ * These tests run the real routing engine over a synthetic radio. A failure
  * here is a statement about the handset implementation, not about a model.
  */
 @DisplayName("MeshSimulation")
@@ -92,6 +93,9 @@ class MeshSimulationTest {
         assertThat(report.acknowledgedCount())
                 .as("messages held through a partition must go out once it heals")
                 .isPositive();
+        assertThat(report.partitions())
+                .as("partition count must describe the topology at the end of the churned run")
+                .isEqualTo(3);
     }
 
     @Test
@@ -108,14 +112,16 @@ class MeshSimulationTest {
     /**
      * Map-valued JSON members must be emitted in sorted key order.
      *
-     * <p>This is asserted structurally rather than by running the simulation
+     * <p>
+     * This is asserted structurally rather than by running the simulation
      * twice and diffing, because {@code Map.copyOf} randomises its iteration
      * order once per JVM rather than once per map: two runs inside the same
      * test JVM agree with each other and disagree with every other process.
      * A reproducibility test written that way passes with the bug still
      * present, which is exactly what the first version of this test did.
      *
-     * <p>Asserting the order directly holds in any JVM and fails the moment
+     * <p>
+     * Asserting the order directly holds in any JVM and fails the moment
      * the sorting is removed.
      */
     @Test
@@ -156,7 +162,8 @@ class MeshSimulationTest {
     /**
      * The cross-process half of the reproducibility claim.
      *
-     * <p>Runs the CLI in a separate JVM and compares the report with the
+     * <p>
+     * Runs the CLI in a separate JVM and compares the report with the
      * documented volatile fields removed. This is the check that actually
      * fails if key ordering regresses, because a fresh JVM picks a fresh
      * iteration order.
@@ -167,8 +174,8 @@ class MeshSimulationTest {
         Path first = Files.createTempFile("resqnet-det-a", ".json");
         Path second = Files.createTempFile("resqnet-det-b", ".json");
         try {
-            String[] args = {"--topology", "mesh", "--nodes", "8", "--messages", "20",
-                    "--seed", "4242", "--rounds", "30", "--quiet"};
+            String[] args = { "--topology", "mesh", "--nodes", "8", "--messages", "20",
+                    "--seed", "4242", "--rounds", "30", "--quiet" };
             Process p1 = separateJvm(first, args).redirectErrorStream(true).start();
             String o1 = new String(p1.getInputStream().readAllBytes());
             assertThat(p1.waitFor()).as("first run failed: " + o1).isZero();
@@ -206,7 +213,8 @@ class MeshSimulationTest {
     /**
      * Substitutes the documented volatile fields so the rest can be compared.
      *
-     * <p>Written with string literals rather than a hand-rolled parser: the
+     * <p>
+     * Written with string literals rather than a hand-rolled parser: the
      * report is generated JSON with stable formatting, so a few targeted
      * replacements are clearer and far less code than a real parse.
      */
@@ -224,7 +232,6 @@ class MeshSimulationTest {
                 q + "keyFingerprint" + q + ": \"X\"");
         return out;
     }
-
 
     @Test
     @DisplayName("produces different behaviour for a different seed")
@@ -346,7 +353,8 @@ class MeshSimulationTest {
     /**
      * Removes the fields that legitimately differ between runs.
      *
-     * <p>Every node generates a fresh EC key pair on each run, exactly as a real
+     * <p>
+     * Every node generates a fresh EC key pair on each run, exactly as a real
      * handset would, so the device id and fingerprint differ by construction. What
      * must be identical is every routing decision: counters, the event stream,
      * radio statistics and latency distributions.

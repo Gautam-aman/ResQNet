@@ -255,7 +255,7 @@ public final class SimulationReport {
         return linkChangeCount;
     }
 
-    /** Number of distinct partitions the topology experienced. */
+    /** Number of partitions in the topology at the end of the simulation run. */
     public int partitions() {
         return partitions;
     }
@@ -419,7 +419,7 @@ public final class SimulationReport {
         sb.append(String.format("  still queued          %d%n", queuedCount));
         sb.append(String.format("  radio frames          %d sent, %d dropped%n",
                 framesSent, framesDropped));
-        sb.append(String.format("  partitions observed   %d%n", partitions));
+        sb.append(String.format("  partitions at end     %d%n", partitions));
         sb.append(String.format("  simulated / cpu time  %d ms / %d ms%n",
                 simulatedDurationMillis, wallClockMillis));
         sb.append(String.format("  throughput            %.1f msg/s of CPU time%n",
