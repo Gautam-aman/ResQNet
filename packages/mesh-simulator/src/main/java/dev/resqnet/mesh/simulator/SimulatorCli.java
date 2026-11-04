@@ -255,7 +255,12 @@ public final class SimulatorCli {
         }
 
         private static int parseInt(String value, String option) {
-            return (int) parseLong(value, option);
+        try {
+        return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(
+                option + " expects an integer, got " + value);
+            }
         }
 
         private static long parseLong(String value, String option) {
